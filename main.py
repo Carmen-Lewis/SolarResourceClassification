@@ -7,7 +7,7 @@ Main function for 15-minute period solar resource classification method
 based on frequency domain theory and the clearness index.
 
 C. Lewis, J.M. Strauss, A.J. Rix, "A Solar Resource Classification Algorithm 
-for Global Horizontal Irradiance Time Series Based on Frequency Domain Analysis,"" 
+for Global Horizontal Irradiance Time Series Based on Frequency Domain Analysis," 
 Journal of Renewable and Sustainable Energy, vol.13, no.3, June 2021. 
 doi:10.1063/5.0045032
 """
