@@ -14,6 +14,7 @@ doi:10.1063/5.0045032
 
 import fft_sd
 import kt
+import plots
 
 import pandas as pd
 
@@ -23,65 +24,85 @@ from pvlib.solarposition import spa_python
 import datetime as dt
 import sys
 
-import matplotlib.pyplot as plt
-
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
 #set location parameters
-LOCATION = Location(-33.92810059, 18.86540031,'Etc/GMT-2', 119, 'SUN')
+#LOCATION = Location(-33.92810059, 18.86540031,'Etc/GMT+2', 119, 'SUN')
+LOCATION = Location(-30.6667, 23.9930,'Etc/GMT+2', 1287, 'DAA')
 
+#set filepath
+#FILEPATH = 'Data/SUN 2020.csv'
+FILEPATH = 'Data/DAA_radiation_2020-01.tab'
+
+#set datasource, either BSRN or SAURAN
+DATASOURCE = 'BSRN'
+
+#set date for plot
 YEAR = 2020
+MONTH = 1
+DAY_F = 1
 
-def main():
+def classification():
     
-    SUN()
-    
-"""
-Classification function for Stellenbosch University (SUN) data from SAURAN
-(https://sauran.ac.za/)
-"""
-def SUN():
+    if(DATASOURCE == 'SAURAN'):
+        #date format
+        dateparse = lambda x: dt.datetime.strptime(x, '%d/%m/%Y %H:%M:%S')
+        #read csv
+        try:
+            df = pd.read_csv(FILEPATH, skiprows=[0,2,3], parse_dates=['TmStamp'], 
+                             index_col='TmStamp', date_parser=dateparse)
+            
+            #set columns names to universal names 
+            df.rename(columns = {'SunWM_Avg':'GHI', 'AirTC_Avg':'T'}, inplace = True) 
+            df['P'] = df['BP_mB_Avg']*100   #barometric pressure in Pa
 
-    #date format
-    dateparse = lambda x: dt.datetime.strptime(x, '%d/%m/%Y %H:%M:%S')
-    #read csv
-    filepath = 'Data/%s %s.csv' %(LOCATION.name, YEAR)
-    try:
-        df = pd.read_csv(filepath, skiprows=[0,2,3], parse_dates=['TmStamp'], 
-                         index_col='TmStamp', date_parser=dateparse)
-    except IOError:
-        print('Unable to load', filepath)
+        except IOError:
+            print('Unable to load', FILEPATH)
+            sys.exit()
+    elif(DATASOURCE == 'BSRN'):
+        #date format
+        dateparse = lambda x: dt.datetime.strptime(x, '%Y-%m-%dT%H:%M')
+        #read csv
+        try:
+            df = pd.read_csv(FILEPATH, skiprows = 31, sep='\t', 
+                             parse_dates=['Date/Time'], index_col = 'Date/Time', 
+                             date_parser=dateparse).tz_localize(LOCATION.tz).tz_convert('UTC').tz_localize(None)
+            
+            #set columns names to universal names
+            df.rename(columns = {'SWD [W/m**2]':'GHI', 'PoPoPoPo [hPa]':'P', 
+                                 'T2 [°C]':'T'}, inplace = True)
+
+        except IOError:
+            print('Unable to load', FILEPATH)
+            sys.exit()
+    else:
+        print('Data source %s does not exist' %DATASOURCE)
         sys.exit()
-        
-    #set columns names to universal names    
-    df['GHI'] = df['SunWM_Avg']     #global horizontal irradiance in W/m^2
-    df['P'] = df['BP_mB_Avg']*100   #barometric pressure in Pa
-    df['T'] = df['AirTC_Avg']       #temperature in °C
-        
+
     #clean dataset of possible duplicates
     df = df.dropna(subset=['GHI'])
-    
-    #add missing timestamps to dataframe
-    r = pd.date_range(start='%s-01-01 00:00' %YEAR, end='%s-12-31 23:59' %YEAR, freq='min')
+
+    #add missing timestamps within range to dataframe
+    r = pd.date_range(start='%s' %df.index[0], end='%s' %df.index[-1], freq='min')
     df = df.reindex(r).reset_index().set_index('index')
     df['DateTime'] = df.index
-    
-    #print(df.head())
-    classification(df)
 
-def classification(df):
-
-    #Calculate the solar zenith angle, theta and shift to correct timezone
-    df['theta'] = spa_python(df.index, LOCATION.latitude, LOCATION.longitude, \
+    #Calculate the solar zenith angle, theta and convert series to df
+    df1 = spa_python(df.index, LOCATION.latitude, LOCATION.longitude, \
                     altitude=LOCATION.altitude, pressure=df['P'], \
-                    temperature=df['T'], atmos_refract=None).zenith.shift(120)
+                    temperature=df['T'], atmos_refract=None).zenith.to_frame()
         
+    #localize new df to LOCATION timezone, convert to UTC and localize to naive
+    df1 = df1.tz_localize(LOCATION.tz).tz_convert('UTC').tz_localize(None)
+    #cast new df column to original df
+    df['theta'] = df1['zenith']
+
     #Discrete First Difference Filter of GHI
     df['GHI_D'] = df['GHI'].diff()
         
-    #Drop minutes where theta > 80
-    df['GHI_D'] = df['GHI_D'].loc[df['theta'] <= 80]
+    #Drop minutes where theta > 85
+    df['GHI_D'] = df['GHI_D'].loc[df['theta'] <= 85]
     
     #Create a df indexed only for every period
     df15 = df.resample('15min').mean()
@@ -100,13 +121,12 @@ def classification(df):
     df15.loc[(df15['SD'] > 2000) & (df15['Overcast'] != 1), 'Cloudy'] = 1
     
     #upsampling from 15 minute period df to minute averaged df
-    forwardfill_period(df, df15)
+    df[['Clear', 'PartiallyClear', 'PartiallyCloudy', 'Cloudy', 'Overcast']] = \
+        df15[['Clear', 'PartiallyClear', 'PartiallyCloudy', 'Cloudy', 'Overcast']]
+    df[['Clear', 'PartiallyClear', 'PartiallyCloudy', 'Cloudy', 'Overcast']] = \
+        df[['Clear', 'PartiallyClear', 'PartiallyCloudy', 'Cloudy', 'Overcast']].ffill(limit=14)
 
-    #testPlot(df)
-        
-def testPlot(df):
+    plots.ten_day_plot(df, YEAR, MONTH, DAY_F)
     
-    plt.plot(df['GHI'])
-    plt.plot(df['theta'])
-
-main()
+if __name__ == "__main__":
+    classification()
