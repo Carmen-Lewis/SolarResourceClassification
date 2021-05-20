@@ -36,5 +36,3 @@ def kt(df15):
     
     #determine overcast periods
     df15.loc[(df15['kt'] > 0) & (df15['kt'] <= 0.35) & (df15['theta'] <= 85), 'Overcast'] = 1
-    #df15.loc[(df15['kt'] > 0) & (df15['kt'] <= 0.35) & (df15['theta'] <= 65), 'Overcast'] = 1
-    #df15.loc[(df15['kt'] > 0) & (df15['kt'] <= 0.5) & (df15['theta'] > 65), 'Overcast'] = 1
