@@ -10,7 +10,7 @@ May be used for either timezone-naive datasets such as [SAURAN](https://sauran.a
 
 [`main.py`](main.py): Main function for 15-minute period solar resource classification method.
 * Set `LOCATION` parameters (latitude, longitude, timezone, altitude, name) via pvlib.location.Location
-* Set `FILEPATH` to .csv directory
+* Set `FILEPATH` to .csv/.tab file
 * Set `DATASOURCE` to either 'BSRN' or 'SAURAN' to select pre-set date formats for .csv or .tab
 * Set `YEAR`, `MONTH`, `DAY_F` for plots
 
